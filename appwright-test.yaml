@@ -1,0 +1,30 @@
+name: AppWright Test
+on: [push]
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Start Backend Service
+        run: |
+          nohup python job_server.py &
+          sleep 3
+      - name: Submit Job
+        id: submit_job
+        run: |
+          export QGJOB_SERVER=http://localhost:8080
+          JOB_ID=$(python qgjob_cli.py submit --org-id=qualgent --app-version-id=xyz123 --test=tests/onboarding.spec.js --priority=high --target=emulator | grep -oE "[0-9a-f\-]{36}")
+          echo "job_id=$JOB_ID" >> $GITHUB_ENV
+      - name: Poll Job Status
+        run: |
+          for i in {1..40}; do
+            STATUS=$(python qgjob_cli.py status ${{ env.job_id }} | grep -oP '(?<=Status for Job ).*')
+            echo "STATUS: $STATUS"
+            if [[ "$STATUS" =~ DONE ]]; then exit 0; fi
+            if [[ "$STATUS" =~ FAILED ]]; then exit 1; fi
+            sleep 3
+          done
+          exit 1
